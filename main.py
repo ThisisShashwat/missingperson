@@ -1,16 +1,37 @@
-# This is a sample Python script.
+import cv2
+import mediapipe as mp
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import streamlink
 
+TWITCH_CHANNEL ="plastuchino"
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+def get_stream_url(channel):
+    streams = streamlink.streams(f"https://twitch.tv/{channel}")
+    if not streams:
+        raise RuntimeError("eee streams found")
+    return streams["best"].to_url()
 
+stream_url = get_stream_url(TWITCH_CHANNEL)
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
+cap = cv2.VideoCapture(stream_url)
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+if not cap.isOpened():
+    raise RuntimeError("cant stream wtf")
+
+frame_count = 0
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        print("ughh?")
+        break
+    frame_count += 1
+    if frame_count % 30 == 0:
+        print(f"frame {frame_count}, shape {frame.shape}")
+
+    cv2.imshow("stream", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
