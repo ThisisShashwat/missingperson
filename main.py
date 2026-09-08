@@ -212,7 +212,7 @@ def api_status():
     last_viewer_time = time.time()
     remaining = max(0, pause_until - time.time()) if pause_until and detection_paused else 0
     return jsonify(missing=current_missing_display, paused=detection_paused,
-                   pause_remaining=remaining, currently_missing=is_missing, blackout=blackout)
+                   pause_remaining=remaining, currently_missing=(is_missing and not detection_paused), blackout=blackout)
 
 
 @flask_app.route('/api/pause', methods=['POST'])
