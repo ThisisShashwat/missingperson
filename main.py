@@ -122,10 +122,25 @@ def detection_loop():
                     missing_since += time.time() - pause_started_at
                 was_paused = False
 
-            rgb_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-            mp_crop = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_crop)
-            crop_result = detector.detect(mp_crop)
-            face_present = len(crop_result.detections) > 0
+            h, w = frame.shape[:2]
+            corners = [
+                (FACECAM_X, FACECAM_Y),
+                (w - FACECAM_W, FACECAM_Y),
+                (FACECAM_X, h - FACECAM_H),
+                (w - FACECAM_W, h - FACECAM_H),
+            ]
+
+            face_present = False
+            for cx, cy in corners:
+                corner_crop = frame[cy:cy + FACECAM_H, cx:cx + FACECAM_W]
+                rgb_crop = cv2.cvtColor(corner_crop, cv2.COLOR_BGR2RGB)
+                mp_crop = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_crop)
+                result = detector.detect(mp_crop)
+                if (cx, cy) == (FACECAM_X, FACECAM_Y):
+                    crop_result = result
+                if len(result.detections) > 0:
+                    face_present = True
+                    break
 
             if not face_present:
                 rgb_full = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
