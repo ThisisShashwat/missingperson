@@ -1,12 +1,14 @@
-import time, json, threading
+import json
+import threading
+import time
 
 import cv2
 import mediapipe as mp
+import streamlink
+from flask import Flask, Response, jsonify, request, render_template
+from imutils.video import VideoStream
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import FaceDetector, FaceDetectorOptions, RunningMode
-import streamlink
-from imutils.video import VideoStream
-from flask import Flask, Response, jsonify, render_template_string, request, render_template
 
 TWITCH_CHANNEL = "plastuchino"
 
@@ -28,6 +30,7 @@ was_paused = False
 PERSIST_FILE = "missing_time.json"
 
 latest_frame = None
+last_viewer_time = 0
 current_missing_display = 0.0
 
 REDUCE_STEP = 60
@@ -49,17 +52,15 @@ def get_stream_url(channel):
         raise RuntimeError("eee streams found")
     return streams["best"].to_url()
 
+
 stream_url = get_stream_url(TWITCH_CHANNEL)
 
 vs = VideoStream(stream_url).start()
 time.sleep(1.0)
 
 detector = FaceDetector.create_from_options(
-    FaceDetectorOptions(
-        base_options=BaseOptions(model_asset_path="face_detector.tflite"),
-        running_mode=RunningMode.VIDEO,
-    )
-)
+    FaceDetectorOptions(base_options=BaseOptions(model_asset_path="face_detector.tflite"),
+        running_mode=RunningMode.IMAGE, ))
 
 frame_count = 0
 blackout = False
@@ -67,13 +68,12 @@ blackout = False
 last_save_time = time.time()
 SAVE_INTERVAL = 2
 
-show_full = False
-
 
 def detection_loop():
     global missing_since, absent_frames, present_frames, is_missing, total_missing
     global frame_count, last_save_time, latest_frame, current_missing_display
-    global detection_paused, pause_started_at, was_paused, pending_reduction, reset_requested, show_full, pause_until
+    global detection_paused, pause_started_at, was_paused, pending_reduction, reset_requested
+    global pause_until, last_viewer_time, blackout
 
     while True:
         frame = vs.read()
@@ -94,24 +94,22 @@ def detection_loop():
             missing_since = time.time() if is_missing else None
             reset_requested = False
 
-        if not show_full:
-            facecam = frame[FACECAM_Y:FACECAM_Y + FACECAM_H, FACECAM_X:FACECAM_X + FACECAM_W]
-        else:
-            facecam = frame
-
-        if blackout:
-            facecam[:] = 0
-
         if detection_paused and pause_until and time.time() >= pause_until:
             detection_paused = False
             pause_until = None
+
+        if blackout:
+            frame[:] = 0
+
+        crop = frame[FACECAM_Y:FACECAM_Y + FACECAM_H, FACECAM_X:FACECAM_X + FACECAM_W]
+        crop_result = None
 
         if detection_paused:
             if not was_paused:
                 pause_started_at = time.time()
                 was_paused = True
 
-            current_missing = total_missing + (pause_started_at - missing_since if is_missing else 0)
+            current_missing = total_missing + (pause_started_at - missing_since if is_missing and missing_since else 0)
             current_missing_display = current_missing
 
             if time.time() - last_save_time >= SAVE_INTERVAL:
@@ -124,11 +122,16 @@ def detection_loop():
                     missing_since += time.time() - pause_started_at
                 was_paused = False
 
-            rgb = cv2.cvtColor(facecam, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            rgb_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            mp_crop = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_crop)
+            crop_result = detector.detect(mp_crop)
+            face_present = len(crop_result.detections) > 0
 
-            result = detector.detect_for_video(mp_image, int(time.time() * 1000))
-            face_present = len(result.detections) > 0
+            if not face_present:
+                rgb_full = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_full = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_full)
+                full_result = detector.detect(mp_full)
+                face_present = len(full_result.detections) > 0
 
             if face_present:
                 absent_frames = 0
@@ -153,15 +156,17 @@ def detection_loop():
                     json.dump({"total_missing": current_missing}, f)
                 last_save_time = time.time()
 
-            # print(f"missing: {current_missing:.1f}s")
+            print(f"missing: {current_missing:.1f}s")
 
-            if result.detections:
-                bb = result.detections[0].bounding_box
-                cv2.rectangle(facecam, (bb.origin_x, bb.origin_y),
-                              (bb.origin_x + bb.width, bb.origin_y + bb.height), (0, 255, 0), 2)
+        if time.time() - last_viewer_time < 5:
+            if crop_result and crop_result.detections:
+                bb = crop_result.detections[0].bounding_box
+                cv2.rectangle(crop, (bb.origin_x, bb.origin_y), (bb.origin_x + bb.width, bb.origin_y + bb.height),
+                              (0, 255, 0), 2)
+            _, jpeg = cv2.imencode('.jpg', crop)
+            latest_frame = jpeg.tobytes()
 
-        _, jpeg = cv2.imencode('.jpg', facecam)
-        latest_frame = jpeg.tobytes()
+        # if frame_count % 30 == 0:  #     print(f"frame {frame_count}, shape {frame.shape}")
 
 
 flask_app = Flask(__name__)
@@ -175,19 +180,25 @@ def index():
 @flask_app.route('/video_feed')
 def video_feed():
     def generate():
+        global last_viewer_time
         while True:
+            last_viewer_time = time.time()
             frame = latest_frame
             if frame:
                 yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n'
             time.sleep(0.05)
+
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @flask_app.route('/api/status')
 def api_status():
+    global last_viewer_time
+    last_viewer_time = time.time()
     remaining = max(0, pause_until - time.time()) if pause_until and detection_paused else 0
-    return jsonify(missing=current_missing_display, paused=detection_paused, fullscreen=show_full,
-                   pause_remaining=remaining)
+    return jsonify(missing=current_missing_display, paused=detection_paused,
+                   pause_remaining=remaining, currently_missing=is_missing, blackout=blackout)
+
 
 @flask_app.route('/api/pause', methods=['POST'])
 def api_pause():
@@ -207,13 +218,6 @@ def api_resume():
     return jsonify(paused=False)
 
 
-@flask_app.route('/api/fullscreen', methods=['POST'])
-def api_fullscreen():
-    global show_full
-    show_full = not show_full
-    return jsonify(fullscreen=show_full)
-
-
 @flask_app.route('/api/reduce', methods=['POST'])
 def api_reduce():
     global pending_reduction
@@ -227,6 +231,15 @@ def api_reset():
     reset_requested = True
     return jsonify(ok=True)
 
+@flask_app.route('/overlay')
+def overlay():
+    return render_template('overlay.html')
+
+@flask_app.route('/api/blackout', methods=['POST'])
+def api_blackout():
+    global blackout
+    blackout = not blackout
+    return jsonify(blackout=blackout)
 
 threading.Thread(target=detection_loop, daemon=True).start()
 flask_app.run(host='0.0.0.0', port=8080, threaded=True)

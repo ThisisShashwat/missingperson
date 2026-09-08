@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; }
+  body {
+    background: transparent;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: white;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.5);
+    padding: 10px 15px;
+    display: inline-block;
+  }
+  #time {
+    font-size: 24px;
+    font-weight: bold;
+  }
+  #alert {
+    font-size: 32px;
+    font-weight: bold;
+    color: #ff4444;
+    display: none;
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+</style>
+</head>
+<body>
+<div id="alert">⚠ MISSING</div>
+<div id="time">Total missing time: 0h 0m</div>
+<script>
+setInterval(() => {
+  fetch('/api/status').then(r => r.json()).then(d => {
+    var s = Math.floor(d.missing);
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    document.getElementById('time').textContent = 'Total missing time: ' + h + 'h ' + m + 'm';
+    document.getElementById('alert').style.display = d.currently_missing ? 'block' : 'none';
+  });
+}, 1000);
+</script>
+</body>
+</html>

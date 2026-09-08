@@ -75,8 +75,8 @@
            style="width:50px;padding:8px;border-radius:5px;border:none;font-size:14px"> min
     <button class="pause" id="pauseBtn" onclick="doPause()">Pause detection</button>
     <button class="reduce" onclick="api('/api/reduce')">-60s</button>
-    <button class="toggle" id="fsBtn" onclick="api('/api/fullscreen')">Switch to fullscreen</button>
     <button class="reset" onclick="document.getElementById('confirm').style.display='block'">Reset missing time</button>
+        <button class="toggle" id="blackoutBtn" onclick="api('/api/blackout')">DEBUG Blackout: OFF</button>
 </div>
 <div id="confirm">
     <p>Reset missing time to 0? This cannot be undone.</p>
@@ -85,12 +85,18 @@
     </button>
 </div>
 <script>
+    var skipPoll = false;
+
     function api(u, b) {
+        skipPoll = true;
         fetch(u, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: b ? JSON.stringify(b) : null
-        }).then(r => r.json()).then(upd)
+        }).then(r => r.json()).then(d => {
+            upd(d);
+            setTimeout(() => skipPoll = false, 1000);
+        });
     }
 
     function doPause() {
@@ -105,12 +111,14 @@
         if (d.paused !== undefined) {
             document.getElementById('pauseBtn').textContent = d.paused ? 'Resume' : 'Pause detection';
             document.getElementById('pauseBtn').dataset.paused = d.paused ? '1' : '0';
+                  if(d.blackout!==undefined)document.getElementById('blackoutBtn').textContent=d.blackout?'DEBUGBlackout: ON':'DEBUG Blackout: OFF';
         }
         if (d.pause_remaining > 0) document.getElementById('pauseBtn').textContent = 'Resume (' + Math.ceil(d.pause_remaining / 60) + 'm left)';
-        if (d.fullscreen !== undefined) document.getElementById('fsBtn').textContent = d.fullscreen ? 'Switch to facecam crop' : 'Switch to fullscreen';
+
     }
 
     setInterval(() => {
+        if (skipPoll) return;
         fetch('/api/status').then(r => r.json()).then(d => {
             document.getElementById('missing').textContent = 'Missing: ' + d.missing.toFixed(1) + 's';
             upd(d);
