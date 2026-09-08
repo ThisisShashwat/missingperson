@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head><title>Missing Timer</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 20px;
+            max-width: 800px;
+            margin: auto
+        }
+
+        img {
+            max-width: 100%;
+            border-radius: 8px;
+            display: block
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold
+        }
+
+        .pause {
+            background: #e94560;
+            color: #fff
+        }
+
+        .reduce {
+            background: #0f3460;
+            color: #fff
+        }
+
+        .toggle {
+            background: #533483;
+            color: #fff
+        }
+
+        .reset {
+            background: #c70039;
+            color: #fff
+        }
+
+        .cancel {
+            background: #555;
+            color: #fff
+        }
+
+        #missing {
+            font-size: 28px;
+            margin: 15px 0;
+            font-weight: bold
+        }
+
+        #confirm {
+            display: none;
+            background: #16213e;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0
+        }
+    </style>
+</head>
+<body>
+<img src="/video_feed"/>
+<div id="missing">Missing: 0.0s</div>
+<div>
+    <input type="number" id="pauseMins" value="5" min="1" max="60"
+           style="width:50px;padding:8px;border-radius:5px;border:none;font-size:14px"> min
+    <button class="pause" id="pauseBtn" onclick="doPause()">Pause detection</button>
+    <button class="reduce" onclick="api('/api/reduce')">-60s</button>
+    <button class="toggle" id="fsBtn" onclick="api('/api/fullscreen')">Switch to fullscreen</button>
+    <button class="reset" onclick="document.getElementById('confirm').style.display='block'">Reset missing time</button>
+</div>
+<div id="confirm">
+    <p>Reset missing time to 0? This cannot be undone.</p>
+    <button class="cancel" onclick="document.getElementById('confirm').style.display='none'">Cancel</button>
+    <button class="reset" onclick="api('/api/reset');document.getElementById('confirm').style.display='none'">Reset
+    </button>
+</div>
+<script>
+    function api(u, b) {
+        fetch(u, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: b ? JSON.stringify(b) : null
+        }).then(r => r.json()).then(upd)
+    }
+
+    function doPause() {
+        if (document.getElementById('pauseBtn').dataset.paused === '1') {
+            api('/api/resume');
+        } else {
+            api('/api/pause', {minutes: parseFloat(document.getElementById('pauseMins').value) || 5});
+        }
+    }
+
+    function upd(d) {
+        if (d.paused !== undefined) {
+            document.getElementById('pauseBtn').textContent = d.paused ? 'Resume' : 'Pause detection';
+            document.getElementById('pauseBtn').dataset.paused = d.paused ? '1' : '0';
+        }
+        if (d.pause_remaining > 0) document.getElementById('pauseBtn').textContent = 'Resume (' + Math.ceil(d.pause_remaining / 60) + 'm left)';
+        if (d.fullscreen !== undefined) document.getElementById('fsBtn').textContent = d.fullscreen ? 'Switch to facecam crop' : 'Switch to fullscreen';
+    }
+
+    setInterval(() => {
+        fetch('/api/status').then(r => r.json()).then(d => {
+            document.getElementById('missing').textContent = 'Missing: ' + d.missing.toFixed(1) + 's';
+            upd(d);
+        })
+    }, 500);
+</script>
+</body>
+</html>
