@@ -187,7 +187,7 @@ def detection_loop():
 flask_app = Flask(__name__)
 
 
-@flask_app.route('/')
+@flask_app.route('/dontshowtheurl')
 def index():
     return render_template('index.html')
 
