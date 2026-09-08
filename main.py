@@ -78,8 +78,7 @@ show_full = False
 def detection_loop():
     global missing_since, absent_frames, present_frames, is_missing, total_missing
     global frame_count, last_save_time, latest_frame, current_missing_display
-    global detection_paused, pause_started_at, was_paused, pending_reduction, reset_requested
-
+    global detection_paused, pause_started_at, was_paused, pending_reduction, reset_requested, show_full
     while True:
         frame = vs.read()
         if frame is None:
@@ -225,9 +224,6 @@ with reset_dialog:
 
 reset_button = ui.button('Reset missing time', on_click=reset_dialog.open)
 
-
 threading.Thread(target=detection_loop, daemon=True).start()
-
-print("Ee")
 
 ui.run(host='0.0.0.0', port=8080, reload=False)
