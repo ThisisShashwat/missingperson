@@ -171,7 +171,7 @@ def detection_loop():
                     json.dump({"total_missing": current_missing}, f)
                 last_save_time = time.time()
 
-            print(f"missing: {current_missing:.1f}s")
+            # print(f"missing: {current_missing:.1f}s")
 
         if time.time() - last_viewer_time < 5:
             # if crop_result and crop_result.detections:
