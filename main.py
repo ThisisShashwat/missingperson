@@ -1,4 +1,4 @@
-import time
+import time, json
 
 import cv2
 import mediapipe as mp
@@ -8,13 +8,20 @@ import streamlink
 
 from imutils.video import VideoStream
 
-TWITCH_CHANNEL ="plastuchino"
+TWITCH_CHANNEL = "plastuchino"
 
 FACECAM_X, FACECAM_Y = 0,0
 FACECAM_W, FACECAM_H = 400, 260
 
 missing_since = None
 total_missing = 0.0
+
+
+absent_frames = 0
+present_frames = 0
+DEBOUNCE_FRAMES = 120
+
+is_missing = False
 
 
 def get_stream_url(channel):
@@ -57,20 +64,28 @@ while True:
     face_present = len(result.detections)  > 0
 
     if face_present:
-        if missing_since is not None:
-            total_missing += time.time() - missing_since
-            missing_since = None
+        absent_frames = 0
+        present_frames += 1
     else:
-        if missing_since is None:
-            missing_since = time.time()
+        present_frames = 0
+        absent_frames += 1
 
-    current_missing = total_missing - (time.time() - missing_since if missing_since else 0)
+    if is_missing and present_frames >= DEBOUNCE_FRAMES:
+        is_missing = False
+        total_missing += time.time() - missing_since
+        missing_since = None
+    elif not is_missing and absent_frames >= DEBOUNCE_FRAMES:
+        is_missing = True
+        missing_since = time.time()
+
+    current_missing = total_missing + (time.time() - missing_since if is_missing else 0)
+
     print(f"missing: {current_missing:.1f}s")
 
 
-    for d in result.detections:
+    if result.detections:
 
-        bb = d.bounding_box
+        bb = result.detections[0].bounding_box
         cv2.rectangle(facecam, (bb.origin_x, bb.origin_y),
                       (bb.origin_x + bb.width, bb.origin_y + bb.height), (0, 255, 0), 2)
 
