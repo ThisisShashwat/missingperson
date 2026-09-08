@@ -174,10 +174,10 @@ def detection_loop():
             print(f"missing: {current_missing:.1f}s")
 
         if time.time() - last_viewer_time < 5:
-            if crop_result and crop_result.detections:
-                bb = crop_result.detections[0].bounding_box
-                cv2.rectangle(crop, (bb.origin_x, bb.origin_y), (bb.origin_x + bb.width, bb.origin_y + bb.height),
-                              (0, 255, 0), 2)
+            # if crop_result and crop_result.detections:
+            #     bb = crop_result.detections[0].bounding_box
+            #     cv2.rectangle(crop, (bb.origin_x, bb.origin_y), (bb.origin_x + bb.width, bb.origin_y + bb.height),
+            #                   (0, 255, 0), 2)
             _, jpeg = cv2.imencode('.jpg', frame)
             latest_frame = jpeg.tobytes()
 
